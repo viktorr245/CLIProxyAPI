@@ -21,7 +21,8 @@ type rpcHostAuthGetRequest struct {
 }
 
 type rpcHostAuthListResponse struct {
-	Files []pluginapi.HostAuthFileEntry `json:"files"`
+	Files   []pluginapi.HostAuthFileEntry `json:"files"`
+	Catalog authCatalogDescriptor         `json:"catalog"`
 }
 
 type rpcHostAuthGetResponse struct {
@@ -58,11 +59,11 @@ func (h *Host) callHostAuthList(ctx context.Context, request []byte) ([]byte, er
 			return nil, fmt.Errorf("decode host auth list request: %w", errUnmarshal)
 		}
 	}
-	entries, errList := h.listAuthFiles()
+	entries, catalog, errList := h.listAuthCatalog(ctx)
 	if errList != nil {
 		return nil, errList
 	}
-	return marshalRPCResult(rpcHostAuthListResponse{Files: entries})
+	return marshalRPCResult(rpcHostAuthListResponse{Files: entries, Catalog: catalog})
 }
 
 func (h *Host) callHostAuthGet(ctx context.Context, request []byte) ([]byte, error) {

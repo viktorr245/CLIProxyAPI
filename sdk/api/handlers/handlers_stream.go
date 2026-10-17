@@ -339,6 +339,7 @@ func (h *BaseAPIHandler) executeStreamWithAuthManagerFormats(ctx context.Context
 	afterAuthCapture := &requestAfterAuthCapture{}
 	lifecycle := h.newRequestLifecycleTracker(ctx, entryProtocol, normalizedModel, originalRequestedModel, true, reqMeta, execOptions.SkipInterceptorPluginID)
 	opts := coreexecutor.Options{
+		CachePolicyProvider:         policyExecutionProvider(providers),
 		Stream:                      true,
 		Alt:                         alt,
 		OriginalRequest:             rawJSON,

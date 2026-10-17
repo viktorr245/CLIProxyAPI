@@ -101,6 +101,7 @@ func (e *CodexExecutor) executeOpenAIImage(ctx context.Context, auth *cliproxyau
 
 	mainModel := e.resolveGPTImage2BaseModel()
 	reporter := helps.NewExecutorUsageReporter(ctx, e, mainModel, auth)
+	reporter.SetLifecycleRequestID(opts.LifecycleRequestID)
 	defer reporter.TrackFailure(ctx, &err)
 
 	body, errBuild := e.prepareCodexOpenAIImageBody(prepared.Body, req, opts, mainModel)
@@ -196,6 +197,7 @@ func (e *CodexExecutor) executeOpenAIImageStream(ctx context.Context, auth *clip
 
 	mainModel := e.resolveGPTImage2BaseModel()
 	reporter := helps.NewExecutorUsageReporter(ctx, e, mainModel, auth)
+	reporter.SetLifecycleRequestID(opts.LifecycleRequestID)
 	defer reporter.TrackFailure(ctx, &err)
 
 	body, errBuild := e.prepareCodexOpenAIImageBody(prepared.Body, req, opts, mainModel)
@@ -326,6 +328,7 @@ func (e *CodexExecutor) executeDirectOpenAIImage(ctx context.Context, auth *clip
 	}
 
 	reporter := helps.NewExecutorUsageReporter(ctx, e, model, auth)
+	reporter.SetLifecycleRequestID(opts.LifecycleRequestID)
 	defer reporter.TrackFailure(ctx, &err)
 	reporter.SetTranslatedReasoningEffort(body, "openai")
 
@@ -384,6 +387,7 @@ func (e *CodexExecutor) executeDirectOpenAIImageStream(ctx context.Context, auth
 	}
 
 	reporter := helps.NewExecutorUsageReporter(ctx, e, model, auth)
+	reporter.SetLifecycleRequestID(opts.LifecycleRequestID)
 	defer reporter.TrackFailure(ctx, &err)
 	reporter.SetTranslatedReasoningEffort(body, "openai")
 

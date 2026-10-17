@@ -376,9 +376,10 @@ func newClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
 // fallbackRoundTripper uses provider-specific TLS fingerprints for protected
 // HTTPS hosts and falls back to the standard transport for all other requests.
 type fallbackRoundTripper struct {
-	anthropic http.RoundTripper
-	chrome    http.RoundTripper
-	fallback  http.RoundTripper
+	physicalBuiltin bool
+	anthropic       http.RoundTripper
+	chrome          http.RoundTripper
+	fallback        http.RoundTripper
 }
 
 func (f *fallbackRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -418,9 +419,10 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
 
 	client := &http.Client{
 		Transport: &fallbackRoundTripper{
-			anthropic: anthropicRT,
-			chrome:    chromeRT,
-			fallback:  standardTransport,
+			physicalBuiltin: ctxRoundTripper == nil,
+			anthropic:       anthropicRT,
+			chrome:          chromeRT,
+			fallback:        standardTransport,
 		},
 	}
 	if timeout > 0 {

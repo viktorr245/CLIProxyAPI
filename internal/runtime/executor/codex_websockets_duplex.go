@@ -432,6 +432,7 @@ func (e *CodexWebsocketsExecutor) streamCodexDuplex(
 				wakeWriter()
 				if !firstResponse {
 					reporter = helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
+					reporter.SetLifecycleRequestID(opts.LifecycleRequestID)
 					reporter.SetTranslatedReasoningEffort(current.clientBody, current.to.String())
 					reporter.StartResponseTTFT()
 				}
@@ -517,6 +518,7 @@ func (e *CodexWebsocketsExecutor) streamCodexDuplex(
 				if len(pending) > 0 && !currentFailure && !ambiguous {
 					eventPrepared, pending = pending[0], pending[1:]
 					eventReporter = helps.NewExecutorUsageReporter(ctx, e, req.Model, auth)
+					eventReporter.SetLifecycleRequestID(opts.LifecycleRequestID)
 					eventReporter.SetTranslatedReasoningEffort(eventPrepared.clientBody, eventPrepared.to.String())
 				} else if !ambiguous {
 					responseActive = false

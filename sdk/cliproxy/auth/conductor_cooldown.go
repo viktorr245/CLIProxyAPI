@@ -746,6 +746,10 @@ func cooldownReason(statusMessage string, quota QuotaState, lastErr *Error) stri
 
 // MarkResult records an execution result and notifies hooks.
 func (m *Manager) MarkResult(ctx context.Context, result Result) {
+	m.markResultWithClock(ctx, result, time.Now)
+}
+
+func (m *Manager) markResultWithClock(ctx context.Context, result Result, clock func() time.Time) {
 	if result.AuthID == "" {
 		return
 	}
@@ -764,7 +768,7 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 
 	var authSnapshot *Auth
 	cooldownStateChanged := false
-	now := time.Now()
+	now := clock()
 
 	m.mu.Lock()
 	if auth, ok := m.auths[result.AuthID]; ok && auth != nil {
@@ -776,8 +780,9 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 				modelKey = canonicalModelKey(result.RouteModel)
 			}
 		}
-		now = time.Now()
+		now = clock()
 		responseHeaders := internallogging.GetResponseHeaders(ctx)
+		quotaRecoveryBefore := quotaRecoveryStates(auth)
 		modelState := existingModelState(auth, modelKey)
 		var cooldownRecordsBefore []CooldownStateRecord
 		trackCooldownState := m.cooldownStore != nil
@@ -1009,6 +1014,7 @@ func (m *Manager) MarkResult(ctx context.Context, result Result) {
 		auth.Generation++
 		auth.UpdatedAt = now
 
+		m.trackQuotaRecoveryLocked(auth, modelKey, result, responseHeaders, quotaRecoveryBefore, now)
 		if !result.SkipQuotaObservation {
 			auth.Quota.ObserveResponseHeadersForProvider(result.Provider, responseHeaders, now)
 			if modelState != nil {

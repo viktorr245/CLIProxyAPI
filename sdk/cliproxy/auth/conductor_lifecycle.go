@@ -101,11 +101,13 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 		cooldownStateChanged = clearCooldownStateForAuth(auth, now) || cooldownStateChanged
 	}
 	auth.EnsureIndex()
+	accountObservation := takeProviderAccountObservation(auth)
 	m.mu.Lock()
 	if m.authEpochs == nil {
 		m.authEpochs = make(map[string]uint64)
 	}
-	if existing, exists := m.auths[auth.ID]; exists && existing != nil && existing.RegistrationEpoch > m.authEpochs[auth.ID] {
+	existing := m.auths[auth.ID]
+	if existing != nil && existing.RegistrationEpoch > m.authEpochs[auth.ID] {
 		m.authEpochs[auth.ID] = existing.RegistrationEpoch
 	}
 	if auth.RegistrationEpoch > m.authEpochs[auth.ID] {
@@ -116,6 +118,7 @@ func (m *Manager) Register(ctx context.Context, auth *Auth) (*Auth, error) {
 	auth.Generation = 1
 	authClone := auth.Clone()
 	m.auths[auth.ID] = authClone
+	m.noteInventoryLocked(auth.ID, existing, authClone, accountObservation, false)
 	m.mu.Unlock()
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
 		m.rebuildAPIKeyModelAliasFromRuntimeConfig()
@@ -170,6 +173,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	if errWeight := ValidateAuthWeight(auth); errWeight != nil {
 		return nil, fmt.Errorf("update auth: %w", errWeight)
 	}
+	accountObservation := takeProviderAccountObservation(auth)
 	m.mu.Lock()
 	existing, ok := m.auths[auth.ID]
 	if !ok || existing == nil {
@@ -266,6 +270,7 @@ func (m *Manager) updateInternal(ctx context.Context, base, auth *Auth, mode upd
 	}
 	authClone := auth.Clone()
 	m.auths[auth.ID] = authClone
+	m.noteInventoryLocked(auth.ID, existing, authClone, accountObservation, false)
 	m.mu.Unlock()
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
 		m.rebuildAPIKeyModelAliasFromRuntimeConfig()
@@ -309,6 +314,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	}
 	provider := strings.TrimSpace(existing.Provider)
 	delete(m.auths, id)
+	delete(m.quotaRecoveryProofs, id)
 	if m.modelPoolOffsets != nil {
 		delete(m.modelPoolOffsets, id)
 	}
@@ -329,6 +335,7 @@ func (m *Manager) Remove(ctx context.Context, id string) {
 	}
 	m.authEpochs[id]++
 	tombstoneEpoch := m.authEpochs[id]
+	m.noteInventoryLocked(id, existing, nil, nil, false)
 	m.mu.Unlock()
 
 	if !shouldDeferAPIKeyModelAliasRebuild(ctx) {
@@ -363,13 +370,30 @@ func (m *Manager) invalidateSessionAffinity(authID string) {
 
 // Load resets manager state from the backing store.
 func (m *Manager) Load(ctx context.Context) error {
+	m.catalogLoadMu.Lock()
+	defer m.catalogLoadMu.Unlock()
+	m.catalogStartMu.Lock()
 	m.mu.Lock()
+	generation := uint64(1)
+	if old := m.catalogLoad.Load(); old != nil {
+		generation = old.generation + 1
+	}
+	prior := make([]*Auth, 0, len(m.auths))
+	for _, a := range m.auths {
+		if a != nil {
+			prior = append(prior, a.Clone())
+		}
+	}
+	m.catalogLoad.Store(&authCatalogLoad{state: "loading", generation: generation, prior: prior})
+	m.catalogStartMu.Unlock()
 	if m.store == nil {
+		m.catalogLoad.Store(&authCatalogLoad{state: "ready", generation: generation})
 		m.mu.Unlock()
 		return nil
 	}
 	items, err := m.store.List(ctx)
 	if err != nil {
+		m.catalogLoad.Store(&authCatalogLoad{state: "failed", generation: generation, prior: prior})
 		m.mu.Unlock()
 		return err
 	}
@@ -390,7 +414,10 @@ func (m *Manager) Load(ctx context.Context) error {
 		m.authEpochs[auth.ID] = max(m.authEpochs[auth.ID], auth.RegistrationEpoch) + 1
 		auth.RegistrationEpoch = m.authEpochs[auth.ID]
 		auth.Generation = 1
-		m.auths[auth.ID] = auth.Clone()
+		takeProviderAccountObservation(auth)
+		stored := auth.Clone()
+		m.auths[auth.ID] = stored
+		m.noteInventoryLocked(auth.ID, previousAuths[auth.ID], stored, nil, true)
 	}
 
 	type removalTombstone struct {
@@ -405,6 +432,7 @@ func (m *Manager) Load(ctx context.Context) error {
 				id:    prevID,
 				epoch: m.authEpochs[prevID],
 			})
+			m.noteInventoryLocked(prevID, previousAuths[prevID], nil, nil, true)
 		}
 	}
 
@@ -413,6 +441,7 @@ func (m *Manager) Load(ctx context.Context) error {
 		cfg = &internalconfig.Config{}
 	}
 	m.rebuildAPIKeyModelAliasLocked(cfg)
+	m.catalogLoad.Store(&authCatalogLoad{state: "ready", generation: generation})
 	m.mu.Unlock()
 
 	if m.scheduler != nil {

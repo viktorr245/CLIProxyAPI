@@ -181,7 +181,9 @@ func (s *Service) registerModelsForAuthBatch(ctx context.Context, auths []*corea
 			phase:    modelRegistrationPhase(authForRegistration),
 			category: modelRegistrationCategory(authForRegistration),
 			run: func(compatCache *openAICompatibilityRegistrationCache) {
-				s.completeModelRegistrationForAuthWithCache(ctx, authForRegistration, compatCache)
+				// A startup/config batch can outlive a file-watcher auth update.
+				// Reconcile against the latest credential after resolving its models.
+				s.refreshModelRegistrationForAuthWithContext(ctx, authForRegistration, compatCache)
 			},
 		})
 	}

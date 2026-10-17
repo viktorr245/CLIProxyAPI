@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	claudeBuiltinHaiku55ModelID        = "claude-haiku-5-5"
 	codexBuiltinImage15ModelID         = "gpt-image-1.5"
 	codexBuiltinImageModelID           = "gpt-image-2"
 	codexBuiltinImage25FlareModelID    = "gpt-image-2.5-flare"
@@ -39,7 +40,37 @@ type staticModelsJSON struct {
 
 // GetClaudeModels returns the standard Claude model definitions.
 func GetClaudeModels() []*ModelInfo {
-	return cloneModelInfos(getModels().Claude)
+	return withClaudeBuiltins(getModels().Claude)
+}
+
+// withClaudeBuiltins returns independent definitions, filling gaps in older
+// catalogues while keeping a remote definition authoritative when present.
+func withClaudeBuiltins(models []*ModelInfo) []*ModelInfo {
+	models = cloneModelInfos(models)
+	for _, model := range models {
+		if model != nil && model.ID == claudeBuiltinHaiku55ModelID {
+			return models
+		}
+	}
+	// Matches router-for-me/models PR #80; no manual thinking budget is advertised.
+	return append(models, &ModelInfo{
+		ID:                  claudeBuiltinHaiku55ModelID,
+		Object:              "model",
+		Created:             1791331200,
+		OwnedBy:             "anthropic",
+		Type:                "claude",
+		DisplayName:         "Claude Haiku 5.5",
+		Description:         "Fastest model for high-volume, latency-sensitive tasks such as classification, extraction, and routing",
+		ContextLength:       1000000,
+		MaxCompletionTokens: 128000,
+		Thinking: &ThinkingSupport{
+			ZeroAllowed:    true,
+			DynamicAllowed: true,
+			Levels:         []string{"low", "medium", "high", "xhigh", "max"},
+		},
+		SupportedInputModalities:  []string{"text", "image"},
+		SupportedOutputModalities: []string{"text"},
+	})
 }
 
 // GetGeminiModels returns the standard Gemini model definitions.
@@ -539,7 +570,7 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 
 	data := getModels()
 	allModels := [][]*ModelInfo{
-		data.Claude,
+		withClaudeBuiltins(data.Claude),
 		data.Gemini,
 		data.Vertex,
 		data.AIStudio,
